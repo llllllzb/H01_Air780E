@@ -533,7 +533,7 @@ __attribute__((interrupt("WCH-Interrupt-fast")))
 __attribute__((section(".highcode")))
 void GPIOA_IRQHandler(void)
 {
-    uint32_t iqr;
+    uint16_t iqr;
     iqr = GPIOA_ReadITFlagPort();
     if (iqr & RING_PIN)
     {
@@ -573,7 +573,7 @@ __attribute__((interrupt("WCH-Interrupt-fast")))
 __attribute__((section(".highcode")))
 void GPIOB_IRQHandler(void)
 {
-    uint32_t iqr;
+    uint16_t iqr;
     iqr = GPIOB_ReadITFlagPort();
     if (iqr & GSINT_PIN)
     {

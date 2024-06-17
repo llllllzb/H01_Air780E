@@ -1332,7 +1332,7 @@ static void mode4CloseSocketQuickly(void)
 	
 	if (isModuleRunNormal())
 	{
-		if (sysinfo.gpsRequest == 0 && sysinfo.alarmRequest == 0 && sysinfo.wifiExtendEvt == 0 && sysinfo.lbsRequest == 0 && sysinfo.netRequest == 0)
+		if (sysinfo.gpsRequest == 0 && sysinfo.alarmRequest == 0 && sysinfo.wifiExtendEvt == 0 && sysinfo.lbsRequest == 0)
 		{
 			tick++;
 			if (tick >= 15)
@@ -1383,7 +1383,6 @@ void modeTryToStop(void)
     sysinfo.wifiExtendEvt = 0;
     sysinfo.lbsExtendEvt = 0;
     volCheckRequestClear();
-    netRequestClear();
     changeModeFsm(MODE_STOP);
     LogMessage(DEBUG_ALL, "modeTryToStop");
 }
@@ -1404,7 +1403,6 @@ void modeTryToDone(void)
     sysinfo.wifiExtendEvt = 0;
     sysinfo.lbsExtendEvt = 0;
     volCheckRequestClear();
-    netRequestClear();
     changeModeFsm(MODE_DONE);
     LogMessage(DEBUG_ALL, "modeTryToDone");
 }
@@ -1543,7 +1541,6 @@ static void modeStart(void)
 //		lbsRequestSet(DEV_EXTEND_OF_MY);
 		wifiRequestSet(DEV_EXTEND_OF_MY);
     	gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-    	netRequestSet();
     }
     sysinfo.nonetTick = 0;
     switch (sysparam.MODE)
@@ -1826,7 +1823,6 @@ static void sysAutoReq(void)
         {
             LogPrintf(DEBUG_ALL, "sysAutoReq==>MODE4:%02d/%02d/%02d %02d:%02d:%02d", year, month, date, hour, minute, second);
             gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
-            netRequestSet();
             if (sysinfo.kernalRun == 0)
             {
             	volCheckRequestSet();
@@ -2036,7 +2032,8 @@ static void sysModeRunTask(void)
 
 void lbsRequestSet(uint8_t ext)
 {
-    sysinfo.lbsRequest = 1;
+	if (!(sysinfo.lbsExtendEvt & ext))	//过滤掉重复lbs请求
+    	sysinfo.lbsRequest = 1;
     sysinfo.lbsExtendEvt |= ext;
 }
 
@@ -2065,6 +2062,7 @@ static void sendLbs(void)
     }
     sysinfo.lbsExtendEvt = 0;
 }
+
 /**************************************************
 @bref		基站上送任务
 @param
@@ -2130,7 +2128,9 @@ void wifiRspSuccess(void)
 
 void wifiRequestSet(uint8_t ext)
 {
-    sysinfo.wifiRequest = 1;
+	LogPrintf(DEBUG_ALL, "wifiRequestSet==>ext:0x%02x  0x%02x  %d", sysinfo.wifiExtendEvt, ext, !(sysinfo.wifiExtendEvt & ext));
+	if (!(sysinfo.wifiExtendEvt & ext))	//过滤掉重复wifi请求
+    	sysinfo.wifiRequest = 1;
     sysinfo.wifiExtendEvt |= ext;
 }
 
@@ -2842,7 +2842,7 @@ void myTaskPreInit(void)
 {
     tmos_memset(&sysinfo, 0, sizeof(sysinfo));
     paramInit();
-    //sysinfo.logLevel = 9;
+    sysinfo.logLevel = 9;
     SetSysClock(CLK_SOURCE_PLL_60MHz);
     portGpioSetDefCfg();
     portModuleGpioCfg(1);
@@ -2937,6 +2937,7 @@ static tmosEvents myTaskEventProcess(tmosTaskID taskID, tmosEvents events)
 		if (sysinfo.logLevel == DEBUG_FACTORY)
 			sysinfo.logLevel = 0;
 		sysinfo.nmeaOutPutCtl = 0;
+		sysinfo.mode4First = 0;
 		paramSaveAll();
 		return events ^ APP_TASK_SYSTEM_SHUTDOWN_EVENT;
 	}

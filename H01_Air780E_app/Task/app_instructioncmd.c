@@ -650,7 +650,6 @@ void do123Instruction(ITEM *item, insMode_e mode, char *message, void *param)
 		 sysinfo.mode123GpsFre = 10;
 	 }
 	 gpsRequestSet(GPS_REQUEST_123_CTL);
-	 netRequestSet();
 	 sprintf(message, "Device gps work %d min, and acquisition positon every %d seconds", sysinfo.mode123Min, sysinfo.mode123GpsFre);
 	}
 	else
@@ -659,7 +658,7 @@ void do123Instruction(ITEM *item, insMode_e mode, char *message, void *param)
 	 strcpy(message, "Device gps work once, please go to the home page to check the location update");
 	}
 	save123InstructionId();
-	netRequestSet();
+
 }
 
 
@@ -840,9 +839,9 @@ void doDebugInstrucion(ITEM *item, char *message)
             sysinfo.sysTick / 3600, sysinfo.sysTick % 3600 / 60, sysinfo.sysTick % 60, sysinfo.gpsRequest,
             sysinfo.gpsUpdatetick / 3600, sysinfo.gpsUpdatetick % 3600 / 60, sysinfo.gpsUpdatetick % 60);
     sprintf(message + strlen(message), "hideLogin:%s;", hiddenServerIsReady() ? "Yes" : "No");
-
-    paramSaveAll();
-    dynamicParamSaveAll();
+	sprintf(message + strlen(message), "runFsm:%d wifiExtendEvt:0x%02x alarmreq:0x%02x", 
+										sysinfo.runFsm, sysinfo.wifiExtendEvt, sysinfo.alarmRequest);
+	
 }
 
 void doACCCTLGNSSInstrucion(ITEM *item, char *message)

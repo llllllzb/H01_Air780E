@@ -774,32 +774,6 @@ static void queryRecvBuffer(void)
 }
 
 /**************************************************
-@bref		网络请求设置
-@param
-@return
-@note
-**************************************************/
-
-void netRequestSet(void)
-{
-	sysinfo.netRequest = 1;
-	LogPrintf(DEBUG_ALL, "netRequestSet==>OK");
-}
-
-/**************************************************
-@bref		网络请求清除
-@param
-@return
-@note
-**************************************************/
-
-void netRequestClear(void)
-{
-	sysinfo.netRequest = 0;
-	LogPrintf(DEBUG_ALL, "netRequestClear==>OK");
-}
-
-/**************************************************
 @bref		联网准备任务
 @param
 @return
@@ -968,7 +942,7 @@ void netConnectTask(void)
 				deleteAllMessage();
 				delMsgReqClear();
 			}
-            if (sysparam.MODE == MODE4 && sysinfo.netRequest == 0)
+            if (sysparam.MODE == MODE4 && sysinfo.gpsRequest == 0)
             {
 				moduleSleepCtl(1);
 				changeProcess(OFFLINE_STATUS);
@@ -1012,9 +986,8 @@ void netConnectTask(void)
             queryRecvBuffer();
             break;
         case OFFLINE_STATUS:
-			if (sysparam.MODE != MODE4 || sysinfo.netRequest != 0)
+			if (sysparam.MODE != MODE4 || sysinfo.gpsRequest != 0)
 			{
-				gpsRequestSet(GPS_REQUEST_UPLOAD_ONE);
 				changeProcess(QIACT_STATUS);
 			}
         	break;
@@ -1319,13 +1292,29 @@ static void cmgrParser(uint8_t *buf, uint16_t len)
 }
 
 /**************************************************
-@bref       模组端数据接收解析器
+@bref       CIPACK 解析
 @param
 @return
 @note
-+CIPACK: 42,42,0
-**************************************************/
 
++CIPACK: 42,42,0
+
+Air780E一般发送AT+CIPACK=<link>模组正常会一次性返回：
+\r\n
++CIPACK: 42,42,0
+\r\n
+而Air780ET发送AT+CIPACK=<link>可能会先返回
+\r\n
+过大概几百毫秒或者微秒再返回
++CIPACK: 42,42,0
+\r\n
+这样就会导致 如果cipackParser函数放在case CIPACK_CMD:后面的话
+实际会不执行cipackParser，因为先返回的\r\n会导致率先执行完一次
+cipackParser，然后执行moduleState.cmd=0;导致当+CIPACK: 42,42,0
+\r\n来临的时候就不执行到cipackParser这里了
+
+**************************************************/
+static uint8_t ack_err_cnt = 0;
 void cipackParser(uint8_t *buf, uint16_t len)
 {
     int index;
@@ -1334,19 +1323,6 @@ void cipackParser(uint8_t *buf, uint16_t len)
     int16_t relen;
     rebuf = buf;
     relen = len;
-    static uint8_t cnt;
-
-    index = my_getstrindex(rebuf, "ERROR", relen);
-    if (index >= 0)
-    {
-        cnt++;
-        LogPrintf(DEBUG_ALL, "ack error cnt:%d", cnt);
-        if (cnt >= 5)
-        {
-            changeProcess(CPIN_STATUS);
-            cnt = 0;
-        }
-    }
 
     index = my_getstrindex(rebuf, "+CIPACK:", relen);
     if (index < 0)
@@ -1361,12 +1337,42 @@ void cipackParser(uint8_t *buf, uint16_t len)
     {
         return;
     }
-    cnt = 0;
+    ack_err_cnt = 0;
     stringToItem(&item, rebuf, relen);
     moduleState.tcpTotal = atoi(item.item_data[0]);
     moduleState.tcpAck = atoi(item.item_data[1]);
     moduleState.tcpNack = atoi(item.item_data[2]);
     LogPrintf(DEBUG_ALL, "Total:%d,Ack:%d,NAck:%d", moduleState.tcpTotal, moduleState.tcpAck, moduleState.tcpNack);
+
+}
+
+/**************************************************
+@bref       CIPACK error 解析
+@param
+@return
+@note
+有时候主链路异常了没有检测到，可能会一直发送AT+CIPACK=0
+这时候由于主链路已经断了，所以会一直返回error
+这时检测到5次error就重新查询网络问题
+**************************************************/
+
+static void cipackErrorParser(uint8_t *buf, uint16_t len)
+{
+	int index;
+    uint8_t *rebuf;
+    int16_t relen;
+
+    index = my_getstrindex(rebuf, "ERROR", relen);
+    if (index >= 0)
+    {
+        ack_err_cnt++;
+        LogPrintf(DEBUG_ALL, "ack error cnt:%d", ack_err_cnt);
+        if (ack_err_cnt >= 5)
+        {
+            changeProcess(CPIN_STATUS);
+            ack_err_cnt = 0;
+        }
+    }
 
 }
 
@@ -2000,7 +2006,7 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
     cmgrParser(dataRestore, len);
     cipstartRspParser(dataRestore, len);
     wifiscanParser(dataRestore, len);
-    cipackParser(dataRestore, len);
+    cipackParser(dataRestore, len);		//点进去函数注释有说明为什么cipack解析函数放在这里
     if (ciprxgetParser(dataRestore, len))
     {
         if (moduleState.cmd == CIPRXGET_CMD)
@@ -2055,6 +2061,9 @@ void moduleRecvParser(uint8_t *buf, uint16_t bufsize)
         case CIPSEND_CMD:
             cipsendParser(dataRestore, len);
             break;
+        case CIPACK_CMD:
+        	cipackErrorParser(dataRestore, len);
+        	break;
         case CIPRXGET_CMD:
             if (my_strstr((char *)dataRestore, "+CME ERROR: 3", len))
             {

@@ -113,7 +113,6 @@ typedef struct
 
 	uint8_t irqTick;
 	uint16_t mode4NoNetTick;
-	uint8_t netRequest;
 
 	uint8_t mode4alarmDate;
     uint8_t mode4alarmHour;
